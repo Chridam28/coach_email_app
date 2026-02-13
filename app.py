@@ -96,7 +96,7 @@ def make_session() -> requests.Session:
     })
     return s
 
-def fetch(session: requests.Session, url: str, timeout: int = 25) -> str:
+def fetch(session: requests.Session, url: str, timeout: int = 10) -> str:
     r = session.get(url, timeout=timeout, allow_redirects=True)
     r.raise_for_status()
     return r.text
@@ -430,3 +430,4 @@ if run_btn and uploaded is not None:
 
     except Exception as e:
         st.error(str(e))
+
