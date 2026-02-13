@@ -407,27 +407,65 @@ run_btn = st.button("Esegui estrazione", type="primary", disabled=(uploaded is N
 if run_btn and uploaded is not None:
     try:
         data = uploaded.getvalue()
-        progress = st.progress(0)
-        status = st.empty()
 
-        # Esegui e mostra log progressivo “simulato”
-        # (il motore lavora in serie; progress aggiornato dai log dopo l'esecuzione completa sarebbe meno utile)
-        status.write("Esecuzione in corso…")
-        output_csv, logs = run_from_csv_bytes(data, float(sleep_s), int(max_rows))
+        text = data.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+
+        targets = []
+        for row in reader:
+            u = (row.get("university") or "").strip()
+            s = (row.get("sport") or "").strip()
+            url = (row.get("url") or "").strip()
+            sd = (row.get("staff_directory_url") or "").strip()
+            if u and s and url:
+                targets.append(Target(university=u, sport=s, url=url, staff_directory_url=sd))
+
+        if max_rows > 0:
+            targets = targets[:max_rows]
+
+        total = len(targets)
+
+        session = make_session()
+
+        progress_bar = st.progress(0)
+        status = st.empty()
+        log_box = st.empty()
+
+        results = []
+        logs = []
+
+        for idx, t in enumerate(targets, start=1):
+
+            status.write(f"🔎 [{idx}/{total}] {t.university} — {t.sport}")
+
+            emails = process_one_target(session, t, sleep_s=float(sleep_s))
+
+            results.append({
+                "university": t.university,
+                "emails": join_emails(emails)
+            })
+
+            logs.append(f"[{idx}/{total}] {t.university} -> {len(emails)} email(s)")
+
+            progress_bar.progress(idx / total)
+            log_box.text("\n".join(logs[-10:]))
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
+        writer.writeheader()
+        writer.writerows(results)
 
         status.write("Completato ✅")
+
         st.download_button(
-            label="Scarica output.csv",
-            data=output_csv.encode("utf-8"),
+            label="📥 Scarica CSV risultato",
+            data=output.getvalue(),
             file_name="output.csv",
-            mime="text/csv",
+            mime="text/csv"
         )
-
-        with st.expander("Log"):
-            st.text("\n".join(logs))
-
-        progress.progress(1.0)
 
     except Exception as e:
         st.error(str(e))
+
+
 
