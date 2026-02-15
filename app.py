@@ -428,78 +428,79 @@ if run_btn and uploaded is not None:
             live_log.text("\n".join(logs[-20:]))
 
    try:
-    # --- ciclo sulle università ---
-    for idx, t in enumerate(targets, start=1):
-
-        # status "prima"
-        status.markdown(
-            f"**University:** {t.university}  \n"
-            f"**Sport:** {t.sport}  \n"
-            f"**Step:** {idx}/{total}  \n"
-            f"**Phase:** fetching & parsing…"
-        )
-
-        logs.append(f"[{idx}/{total}] START  | {t.university} — {t.sport}")
-        live_log.text("\n".join(logs[-20:]))
-
-        try:
-            emails = process_one_target(session, t, sleep_s=float(sleep_s))
-            email_count = len(emails)
-
-            results.append({
-                "university": t.university,
-                "emails": join_emails(emails)
-            })
-
-            # status "dopo"
+        # --- ciclo sulle università ---
+        for idx, t in enumerate(targets, start=1):
+    
+            # status "prima"
             status.markdown(
                 f"**University:** {t.university}  \n"
                 f"**Sport:** {t.sport}  \n"
                 f"**Step:** {idx}/{total}  \n"
-                f"**Emails found:** {email_count}"
+                f"**Phase:** fetching & parsing…"
             )
-
-            logs.append(f"[{idx}/{total}] DONE   | {t.university} -> {email_count} email(s)")
+    
+            logs.append(f"[{idx}/{total}] START  | {t.university} — {t.sport}")
             live_log.text("\n".join(logs[-20:]))
-
-        except Exception as ex:
-            # errore solo per questa università
-            results.append({
-                "university": t.university,
-                "emails": f"ERROR: {ex}"
-            })
-
-            msg = f"[{idx}/{total}] ERROR  | {t.university} -> {ex}"
-            logs.append(msg)
-            errors.append(msg)
-
-            live_log.text("\n".join(logs[-20:]))
-            error_log.text("\n".join(errors[-50:]))
-
-        # progress SEMPRE (anche in caso di errore)
-        progress_bar.progress(idx / total)
-
-    # --- DOPO il ciclo: genera output e download ---
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
-    writer.writeheader()
-    writer.writerows(results)
-
-    st.success("Completed.")
-    st.download_button(
-        label="Download output.csv",
-        data=output.getvalue(),
-        file_name="output.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-
-    with st.expander("Log"):
-        st.text("\n".join(logs))
+    
+            try:
+                emails = process_one_target(session, t, sleep_s=float(sleep_s))
+                email_count = len(emails)
+    
+                results.append({
+                    "university": t.university,
+                    "emails": join_emails(emails)
+                })
+    
+                # status "dopo"
+                status.markdown(
+                    f"**University:** {t.university}  \n"
+                    f"**Sport:** {t.sport}  \n"
+                    f"**Step:** {idx}/{total}  \n"
+                    f"**Emails found:** {email_count}"
+                )
+    
+                logs.append(f"[{idx}/{total}] DONE   | {t.university} -> {email_count} email(s)")
+                live_log.text("\n".join(logs[-20:]))
+    
+            except Exception as ex:
+                # errore solo per questa università
+                results.append({
+                    "university": t.university,
+                    "emails": f"ERROR: {ex}"
+                })
+    
+                msg = f"[{idx}/{total}] ERROR  | {t.university} -> {ex}"
+                logs.append(msg)
+                errors.append(msg)
+    
+                live_log.text("\n".join(logs[-20:]))
+                error_log.text("\n".join(errors[-50:]))
+    
+            # progress SEMPRE (anche in caso di errore)
+            progress_bar.progress(idx / total)
+    
+        # --- DOPO il ciclo: genera output e download ---
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
+        writer.writeheader()
+        writer.writerows(results)
+    
+        st.success("Completed.")
+        st.download_button(
+            label="Download output.csv",
+            data=output.getvalue(),
+            file_name="output.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    
+        with st.expander("Log"):
+            st.text("\n".join(logs))
 
 except Exception as e:
     # errore "globale" dell'esecuzione
     st.error(str(e))
+
 
 
 
