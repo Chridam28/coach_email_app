@@ -18,19 +18,22 @@ st.set_page_config(
     layout="centered",
 )
 
-st.image("logo.jpg", width=220)
+col1, col2 = st.columns([1, 3])
 
-st.markdown(
-    """
-    <div style="text-align:center;">
-      <h1 style="margin-bottom: 0.2rem;">Coach Contact Extractor</h1>
-      <div style="color:#6b7280; font-size: 0.95rem; margin-bottom: 1.2rem;">
-        Academic contact extraction tool for collegiate athletics
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+with col1:
+    st.image("logo.png", width=130)
+
+with col2:
+    st.markdown(
+        """
+        <h1 style="margin-bottom:0.2rem;">Coach Contact Extractor</h1>
+        <div style="color:#6b7280; font-size:0.95rem;">
+        Academic email extraction tool for collegiate athletics programs
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 
 # ============================ SCRAPER LOGIC (UNCHANGED) ============================
@@ -441,4 +444,5 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
