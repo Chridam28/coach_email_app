@@ -437,30 +437,6 @@ def process_one_target(session: requests.Session, t: Target, sleep_s: float = 1.
     return emails
 
 
-# ================= UI CONTROLS =================
-
-st.markdown("### Input")
-uploaded = st.file_uploader(
-    "Upload a CSV with columns: university, sport, url (optional: staff_directory_url)",
-    type=["csv"]
-)
-
-with st.expander("Settings", expanded=True):
-    c1, c2 = st.columns(2)
-    with c1:
-        sleep_s_ui = st.number_input("Pause between universities (seconds)", 0.0, 10.0, 1.2, 0.2)
-    with c2:
-        max_rows = st.number_input("Limit rows (0 = no limit)", 0, 50000, 0, 10)
-
-    st.caption("Output CSV uses ';' as delimiter. Emails are joined with ', ' in a single cell.")
-
-
-run_btn = st.button(
-    "Run extraction",
-    type="primary",
-    use_container_width=True,
-    disabled=(uploaded is None)
-)
 
 # ================= RUN + LIVE PROGRESS =================
 
@@ -579,3 +555,4 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal Tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True
 )
+
