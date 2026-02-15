@@ -10,28 +10,27 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-# ---------------------------- STREAMLIT UI SETUP ----------------------------
+# ============================ PAGE SETUP (CLEAN & ACADEMIC) ============================
 
 st.set_page_config(
     page_title="Coach Contact Extractor",
-    page_icon="🏀",
-    layout="centered"
+    page_icon="📚",
+    layout="centered",
 )
 
 st.markdown(
     """
-    <h1 style='text-align: center;'>
-        🏀 Coach Contact Extractor
-    </h1>
-    <p style='text-align: center; color: gray; font-size: 16px;'>
-        Extract head & assistant coach emails from NCAA athletic websites
-    </p>
+    <div style="text-align:center; margin-top: 0.5rem;">
+      <h1 style="margin-bottom: 0.2rem;">Coach Contact Extractor</h1>
+      <div style="color:#6b7280; font-size: 0.98rem; margin-bottom: 1.0rem;">
+        Extract emails for Head / Assistant Coaches (and recruiting roles when sport-matched) from athletics websites.
+      </div>
+    </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-
-# ---------------------------- SCRAPER LOGIC (IDENTICAL) ----------------------------
+# ============================ SCRAPER LOGIC (UNCHANGED) ============================
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
 
@@ -44,9 +43,7 @@ OBFUSCATIONS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\s+dot\s+", re.IGNORECASE), "."),
 ]
 
-# Ruoli target: coaching + recruiting
 TARGET_ROLE_KEYWORDS = [
-    # coaching
     "head coach",
     "assistant coach",
     "asst coach",
@@ -54,8 +51,6 @@ TARGET_ROLE_KEYWORDS = [
     "associate coach",
     "interim head coach",
     "coach",
-
-    # recruiting (filtrato per sport quando arriva dalla staff directory generale)
     "recruiting",
     "recruiting coordinator",
     "recruiting coord",
@@ -66,7 +61,6 @@ TARGET_ROLE_KEYWORDS = [
     "coordinator of recruiting",
 ]
 
-# Escludi student / graduate assistant
 EXCLUDE_ROLE_KEYWORDS = [
     "student assistant",
     "student asst",
@@ -101,7 +95,6 @@ def norm(s: str) -> str:
 
 def make_session() -> requests.Session:
     s = requests.Session()
-    # Header “da browser” per ridurre blocchi/405
     s.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -124,9 +117,6 @@ def is_same_domain(a: str, b: str) -> bool:
         return False
 
 def extract_emails_anywhere(soup: BeautifulSoup) -> Set[str]:
-    """
-    Estrae email da mailto:, testo e attributi (con deobfuscate).
-    """
     emails: Set[str] = set()
 
     for a in soup.select('a[href^="mailto:"]'):
@@ -200,8 +190,6 @@ def emails_in_block(el) -> Set[str]:
     emails.update(EMAIL_RE.findall(txt))
     return {e.strip() for e in emails if e.strip()}
 
-# ---------- SPORT FILTER (per staff directory generale) ----------
-
 def sport_tokens(sport: str) -> Set[str]:
     s = sport.strip().lower()
     s_clean = re.sub(r"[^a-z0-9\s']", " ", s)
@@ -211,7 +199,7 @@ def sport_tokens(sport: str) -> Set[str]:
     if s_clean:
         tokens.add(s_clean)
         tokens.add(s_clean.replace("’", "'"))
-        tokens.add(s_clean.replace("'", ""))  # mens basketball
+        tokens.add(s_clean.replace("'", ""))
 
     words = [w for w in re.split(r"\s+", s_clean) if w]
     for w in words:
@@ -335,15 +323,12 @@ def join_emails(emails: Set[str]) -> str:
 def process_one_target(session: requests.Session, t: Target, sleep_s: float = 1.2) -> Set[str]:
     emails: Set[str] = set()
 
-    # 1) pagina coaches dello sport (sport match non necessario)
     html = fetch(session, t.url)
     emails.update(extract_target_emails_from_page(html, t.url, t.sport, require_sport_match=False))
 
-    # 2) fallback bio dalla pagina sport
     if not emails:
         emails.update(extract_from_bios(session, t.url, html, t.sport, require_sport_match=False))
 
-    # 3) staff directory generale (QUI filtro sport)
     if not emails and t.staff_directory_url.strip():
         sdu = t.staff_directory_url.strip()
         sd_html = fetch(session, sdu)
@@ -356,91 +341,26 @@ def process_one_target(session: requests.Session, t: Target, sleep_s: float = 1.
     time.sleep(sleep_s)
     return emails
 
-def run_from_csv_bytes(csv_bytes: bytes, sleep_s: float, max_rows: int) -> Tuple[str, List[str]]:
-    """
-    Input: bytes of CSV with columns university,sport,url,staff_directory_url (optional).
-    Output: CSV string (delimiter ';') and log lines.
-    """
-    logs: List[str] = []
+# ============================ UI CONTROLS (CLEAN) ============================
 
-    text = csv_bytes.decode("utf-8-sig", errors="replace")
-    reader = csv.DictReader(io.StringIO(text))
+st.markdown("### Input")
+uploaded = st.file_uploader(
+    "Upload a CSV with columns: university, sport, url, staff_directory_url (optional)",
+    type=["csv"]
+)
 
-    needed = {"university", "sport", "url"}
-    if not reader.fieldnames or not needed.issubset(set(reader.fieldnames)):
-        raise ValueError("Il CSV deve contenere: university, sport, url (e opzionale staff_directory_url)")
+with st.expander("Settings", expanded=True):
+    c1, c2 = st.columns(2)
+    with c1:
+        sleep_s = st.number_input("Pause between universities (seconds)", 0.0, 10.0, 1.2, 0.2)
+    with c2:
+        max_rows = st.number_input("Limit rows (0 = no limit)", 0, 50000, 0, 10)
 
-    targets: List[Target] = []
-    for row in reader:
-        u = (row.get("university") or "").strip()
-        s = (row.get("sport") or "").strip()
-        url = (row.get("url") or "").strip()
-        sd = (row.get("staff_directory_url") or "").strip()
-        if not (u and s and url):
-            continue
-        targets.append(Target(university=u, sport=s, url=url, staff_directory_url=sd))
+    st.caption("Output is saved with ';' as column delimiter to avoid quoting emails that contain commas.")
 
-    if not targets:
-        raise ValueError("Nessuna riga valida trovata nel CSV.")
+run_btn = st.button("Run extraction", type="primary", use_container_width=True, disabled=(uploaded is None))
 
-    if max_rows > 0:
-        targets = targets[:max_rows]
-
-    session = make_session()
-
-    out_buf = io.StringIO()
-    writer = csv.DictWriter(out_buf, fieldnames=["university", "emails"], delimiter=";", quoting=csv.QUOTE_MINIMAL)
-    writer.writeheader()
-
-    total = len(targets)
-    for idx, t in enumerate(targets, start=1):
-        logs.append(f"[{idx}/{total}] {t.university} — {t.sport}")
-        try:
-            emails = process_one_target(session, t, sleep_s=sleep_s)
-            writer.writerow({"university": t.university, "emails": join_emails(emails)})
-            logs.append(f"    -> {len(emails)} email(s)")
-        except Exception as ex:
-            writer.writerow({"university": t.university, "emails": f"ERROR: {ex}"})
-            logs.append(f"    ERROR: {ex}")
-
-    return out_buf.getvalue(), logs
-
-# ---------------------------- STREAMLIT CONTROLS ----------------------------
-
-with st.container():
-    st.markdown("### ⚙️ Settings")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        sleep_s = st.number_input(
-            "Pause between universities (seconds)",
-            min_value=0.0,
-            max_value=10.0,
-            value=1.2,
-            step=0.2
-        )
-
-    with col2:
-        max_rows = st.number_input(
-            "Limit rows (0 = no limit)",
-            min_value=0,
-            max_value=50000,
-            value=0,
-            step=10
-        )
-
-
-with col1:
-    uploaded = st.file_uploader("Carica input CSV (university,sport,url,staff_directory_url)", type=["csv"])
-
-with col2:
-    sleep_s = st.number_input("Pausa tra università (s)", min_value=0.0, max_value=10.0, value=1.2, step=0.2)
-
-with col3:
-    max_rows = st.number_input("Limite righe (0 = nessun limite)", min_value=0, max_value=50000, value=0, step=10)
-
-run_btn = st.button("Esegui estrazione", type="primary", disabled=(uploaded is None))
+# ============================ RUN + PROGRESS ============================
 
 if run_btn and uploaded is not None:
     try:
@@ -449,7 +369,12 @@ if run_btn and uploaded is not None:
         text = data.decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(io.StringIO(text))
 
-        targets = []
+        needed = {"university", "sport", "url"}
+        if not reader.fieldnames or not needed.issubset(set(reader.fieldnames)):
+            st.error("Input CSV must contain columns: university, sport, url (optional: staff_directory_url).")
+            st.stop()
+
+        targets: List[Target] = []
         for row in reader:
             u = (row.get("university") or "").strip()
             s = (row.get("sport") or "").strip()
@@ -462,54 +387,54 @@ if run_btn and uploaded is not None:
             targets = targets[:max_rows]
 
         total = len(targets)
+        if total == 0:
+            st.error("No valid rows found in the CSV.")
+            st.stop()
 
         session = make_session()
 
-        progress_bar = st.progress(0)
+        st.markdown("### Progress")
+        progress_bar = st.progress(0.0)
         status = st.empty()
-        log_box = st.empty()
 
         results = []
         logs = []
 
         for idx, t in enumerate(targets, start=1):
-
             status.markdown(
-    f"**Processing:** `{t.university}`  \n"
-    f"Sport: *{t.sport}*  \n"
-    f"Progress: {idx}/{total}"
-)
-
+                f"**University:** {t.university}  \n"
+                f"**Sport:** {t.sport}  \n"
+                f"**Step:** {idx}/{total}"
+            )
 
             emails = process_one_target(session, t, sleep_s=float(sleep_s))
-
-            results.append({
-                "university": t.university,
-                "emails": join_emails(emails)
-            })
-
+            results.append({"university": t.university, "emails": join_emails(emails)})
             logs.append(f"[{idx}/{total}] {t.university} -> {len(emails)} email(s)")
 
             progress_bar.progress(idx / total)
-            log_box.text("\n".join(logs[-10:]))
 
+        # Build output CSV with ';' delimiter
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
         writer.writeheader()
         writer.writerows(results)
 
-        status.write("Completato ✅")
-
+        st.success("Completed.")
         st.download_button(
-            label="📥 Scarica CSV risultato",
+            label="Download output.csv",
             data=output.getvalue(),
             file_name="output.csv",
-            mime="text/csv"
+            mime="text/csv",
+            use_container_width=True,
         )
+
+        with st.expander("Log"):
+            st.text("\n".join(logs))
 
     except Exception as e:
         st.error(str(e))
 
-
-
-
+st.markdown(
+    "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
+    unsafe_allow_html=True,
+)
