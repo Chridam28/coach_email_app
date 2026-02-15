@@ -416,17 +416,46 @@ errors = []
 
 
         for idx, t in enumerate(targets, start=1):
-            status.markdown(
-                f"**University:** {t.university}  \n"
-                f"**Sport:** {t.sport}  \n"
-                f"**Step:** {idx}/{total}"
-            )
+    # Status prima dell'elaborazione
+    status.markdown(
+        f"**University:** {t.university}  \n"
+        f"**Sport:** {t.sport}  \n"
+        f"**Step:** {idx}/{total}  \n"
+        f"**Phase:** fetching & parsing…"
+    )
 
-            emails = process_one_target(session, t, sleep_s=float(sleep_s))
-            results.append({"university": t.university, "emails": join_emails(emails)})
-            logs.append(f"[{idx}/{total}] {t.university} -> {len(emails)} email(s)")
+    logs.append(f"[{idx}/{total}] START  | {t.university} — {t.sport}")
+    live_log.text("\n".join(logs[-20:]))
 
-            progress_bar.progress(idx / total)
+    try:
+        emails = process_one_target(session, t, sleep_s=float(sleep_s))
+        email_count = len(emails)
+
+        results.append({"university": t.university, "emails": join_emails(emails)})
+
+        # Status dopo elaborazione
+        status.markdown(
+            f"**University:** {t.university}  \n"
+            f"**Sport:** {t.sport}  \n"
+            f"**Step:** {idx}/{total}  \n"
+            f"**Emails found:** {email_count}"
+        )
+
+        logs.append(f"[{idx}/{total}] DONE   | {t.university} -> {email_count} email(s)")
+        live_log.text("\n".join(logs[-20:]))
+
+    except Exception as ex:
+        results.append({"university": t.university, "emails": f"ERROR: {ex}"})
+
+        msg = f"[{idx}/{total}] ERROR  | {t.university} -> {ex}"
+        logs.append(msg)
+        errors.append(msg)
+
+        live_log.text("\n".join(logs[-20:]))
+        error_log.text("\n".join(errors[-50:]))
+
+    progress_bar.progress(idx / total)
+
 
         # Build output CSV with ';' delimiter
         output = io.StringIO()
@@ -453,6 +482,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
