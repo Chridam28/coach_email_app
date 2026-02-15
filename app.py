@@ -400,11 +400,20 @@ if run_btn and uploaded is not None:
         session = make_session()
 
         st.markdown("### Progress")
-        progress_bar = st.progress(0.0)
-        status = st.empty()
 
-        results = []
-        logs = []
+progress_bar = st.progress(0.0)
+status = st.empty()
+
+st.markdown("#### Live log")
+live_log = st.empty()
+
+with st.expander("Errors (if any)", expanded=False):
+    error_log = st.empty()
+
+results = []
+logs = []
+errors = []
+
 
         for idx, t in enumerate(targets, start=1):
             status.markdown(
@@ -444,6 +453,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
