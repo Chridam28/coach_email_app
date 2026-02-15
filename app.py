@@ -12,8 +12,24 @@ from bs4 import BeautifulSoup
 
 # ---------------------------- STREAMLIT UI SETUP ----------------------------
 
-st.set_page_config(page_title="Coach Email Extractor", layout="wide")
-st.title("Coach Email Extractor — Web (same logic as Windows app)")
+st.set_page_config(
+    page_title="Coach Contact Extractor",
+    page_icon="🏀",
+    layout="centered"
+)
+
+st.markdown(
+    """
+    <h1 style='text-align: center;'>
+        🏀 Coach Contact Extractor
+    </h1>
+    <p style='text-align: center; color: gray; font-size: 16px;'>
+        Extract head & assistant coach emails from NCAA athletic websites
+    </p>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ---------------------------- SCRAPER LOGIC (IDENTICAL) ----------------------------
 
@@ -391,7 +407,29 @@ def run_from_csv_bytes(csv_bytes: bytes, sleep_s: float, max_rows: int) -> Tuple
 
 # ---------------------------- STREAMLIT CONTROLS ----------------------------
 
-col1, col2, col3 = st.columns([2, 1, 1])
+with st.container():
+    st.markdown("### ⚙️ Settings")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        sleep_s = st.number_input(
+            "Pause between universities (seconds)",
+            min_value=0.0,
+            max_value=10.0,
+            value=1.2,
+            step=0.2
+        )
+
+    with col2:
+        max_rows = st.number_input(
+            "Limit rows (0 = no limit)",
+            min_value=0,
+            max_value=50000,
+            value=0,
+            step=10
+        )
+
 
 with col1:
     uploaded = st.file_uploader("Carica input CSV (university,sport,url,staff_directory_url)", type=["csv"])
@@ -436,7 +474,12 @@ if run_btn and uploaded is not None:
 
         for idx, t in enumerate(targets, start=1):
 
-            status.write(f"🔎 [{idx}/{total}] {t.university} — {t.sport}")
+            status.markdown(
+    f"**Processing:** `{t.university}`  \n"
+    f"Sport: *{t.sport}*  \n"
+    f"Progress: {idx}/{total}"
+)
+
 
             emails = process_one_target(session, t, sleep_s=float(sleep_s))
 
@@ -466,6 +509,7 @@ if run_btn and uploaded is not None:
 
     except Exception as e:
         st.error(str(e))
+
 
 
 
