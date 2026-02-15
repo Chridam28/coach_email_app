@@ -417,15 +417,15 @@ if run_btn and uploaded is not None:
 
         for idx, t in enumerate(targets, start=1):
     # Status prima dell'elaborazione
-    status.markdown(
-        f"**University:** {t.university}  \n"
-        f"**Sport:** {t.sport}  \n"
-        f"**Step:** {idx}/{total}  \n"
-        f"**Phase:** fetching & parsing…"
-    )
-
-    logs.append(f"[{idx}/{total}] START  | {t.university} — {t.sport}")
-    live_log.text("\n".join(logs[-20:]))
+            status.markdown(
+                f"**University:** {t.university}  \n"
+                f"**Sport:** {t.sport}  \n"
+                f"**Step:** {idx}/{total}  \n"
+                f"**Phase:** fetching & parsing…"
+            )
+        
+            logs.append(f"[{idx}/{total}] START  | {t.university} — {t.sport}")
+            live_log.text("\n".join(logs[-20:]))
 
     try:
         emails = process_one_target(session, t, sleep_s=float(sleep_s))
@@ -482,6 +482,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
