@@ -10,15 +10,13 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-# ================= PAGE CONFIG =================
+# ============================ PAGE SETUP (CLEAN & ACADEMIC) ============================
 
 st.set_page_config(
     page_title="Coach Contact Extractor",
-    page_icon="logo.jpg",
+    page_icon="📚",
     layout="centered",
 )
-
-# ================= HEADER =================
 
 col1, col2 = st.columns([1, 3])
 
@@ -36,9 +34,53 @@ with col2:
         unsafe_allow_html=True
     )
 
-# ================= SCRAPER LOGIC =================
+
+# ============================ SCRAPER LOGIC (UNCHANGED) ============================
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
+
+OBFUSCATIONS: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"\s*\[at\]\s*", re.IGNORECASE), "@"),
+    (re.compile(r"\s*\(at\)\s*", re.IGNORECASE), "@"),
+    (re.compile(r"\s+at\s+", re.IGNORECASE), "@"),
+    (re.compile(r"\s*\[dot\]\s*", re.IGNORECASE), "."),
+    (re.compile(r"\s*\(dot\)\s*", re.IGNORECASE), "."),
+    (re.compile(r"\s+dot\s+", re.IGNORECASE), "."),
+]
+
+TARGET_ROLE_KEYWORDS = [
+    "head coach",
+    "assistant coach",
+    "asst coach",
+    "associate head coach",
+    "associate coach",
+    "interim head coach",
+    "coach",
+    "recruiting",
+    "recruiting coordinator",
+    "recruiting coord",
+    "director of recruiting",
+    "recruiting director",
+    "recruiting operations",
+    "recruiting ops",
+    "coordinator of recruiting",
+]
+
+EXCLUDE_ROLE_KEYWORDS = [
+    "student assistant",
+    "student asst",
+    "student-athlete assistant",
+    "graduate assistant",
+    "grad assistant",
+    "grad asst",
+]
+
+EXCLUDE_ABBREV_PATTERNS = [
+    re.compile(r"\bga\b", re.IGNORECASE),
+    re.compile(r"\bg\.a\.\b", re.IGNORECASE),
+    re.compile(r"\bsa\b", re.IGNORECASE),
+    re.compile(r"\bs\.a\.\b", re.IGNORECASE),
+]
 
 @dataclass
 class Target:
@@ -47,161 +89,58 @@ class Target:
     url: str
     staff_directory_url: str = ""
 
-def make_session():
+def deobfuscate(text: str) -> str:
+    t = text
+    for pat, repl in OBFUSCATIONS:
+        t = pat.sub(repl, t)
+    return t
+
+def norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s.strip().lower())
+
+def make_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
     })
     return s
 
-def fetch(session, url, timeout=10):
-    r = session.get(url, timeout=timeout)
+def fetch(session: requests.Session, url: str, timeout: int = 10) -> str:
+    r = session.get(url, timeout=timeout, allow_redirects=True)
     r.raise_for_status()
     return r.text
 
-def extract_emails(html):
-    soup = BeautifulSoup(html, "lxml")
-    emails = set()
+def is_same_domain(a: str, b: str) -> bool:
+    try:
+        return urlparse(a).netloc.lower() == urlparse(b).netloc.lower()
+    except Exception:
+        return False
+
+def extract_emails_anywhere(soup: BeautifulSoup) -> Set[str]:
+    emails: Set[str] = set()
 
     for a in soup.select('a[href^="mailto:"]'):
         href = a.get("href", "")
-        email = href.replace("mailto:", "").split("?")[0]
-        emails.add(email.strip())
+        e = href.split("mailto:", 1)[1].split("?", 1)[0].strip()
+        if e:
+            emails.add(e)
 
-    text = soup.get_text(" ", strip=True)
+    text = deobfuscate(soup.get_text(" ", strip=True))
     emails.update(EMAIL_RE.findall(text))
 
-    return emails
+    for tag in soup.find_all(True):
+        for _, val in tag.attrs.items():
+            if isinstance(val, str):
+                vv = deobfuscate(val)
+                emails.update(EMAIL_RE.findall(vv))
 
-def process_one_target(session, target):
-    html = fetch(session, target.url)
-    emails = extract_emails(html)
-    return emails
+    return {e.strip() for e in emails if e.strip()}
 
-# ================= UI =================
-
-st.markdown("### Input")
-
-uploaded = st.file_uploader(
-    "Upload CSV with columns: university, sport, url, staff_directory_url (optional)",
-    type=["csv"]
-)
-
-with st.expander("Settings", expanded=True):
-    sleep_s = st.number_input("Pause between universities (seconds)", 0.0, 10.0, 1.0, 0.5)
-    max_rows = st.number_input("Limit rows (0 = no limit)", 0, 50000, 0, 10)
-
-run_btn = st.button("Run extraction", type="primary", use_container_width=True, disabled=(uploaded is None))
-
-# ================= RUN SECTION =================
-
-if run_btn and uploaded is not None:
-    try:
-        data = uploaded.getvalue()
-        text = data.decode("utf-8-sig", errors="replace")
-        reader = csv.DictReader(io.StringIO(text))
-
-        targets = []
-
-        for row in reader:
-            u = (row.get("university") or "").strip()
-            s = (row.get("sport") or "").strip()
-            url = (row.get("url") or "").strip()
-            sd = (row.get("staff_directory_url") or "").strip()
-
-            if u and s and url:
-                targets.append(Target(u, s, url, sd))
-
-        if max_rows > 0:
-            targets = targets[:max_rows]
-
-        total = len(targets)
-
-        if total == 0:
-            st.error("No valid rows found.")
-            st.stop()
-
-        session = make_session()
-
-        st.markdown("### Progress")
-
-        progress_bar = st.progress(0.0)
-        status = st.empty()
-
-        st.markdown("#### Live log")
-        live_log = st.empty()
-
-        results = []
-        logs = []
-
-        for idx, target in enumerate(targets, start=1):
-
-            status.markdown(
-                f"**University:** {target.university}  \n"
-                f"**Sport:** {target.sport}  \n"
-                f"**Step:** {idx}/{total}  \n"
-                f"**Phase:** fetching..."
-            )
-
-            logs.append(f"[{idx}/{total}] START | {target.university}")
-            live_log.text("\n".join(logs[-20:]))
-
-            try:
-                emails = process_one_target(session, target)
-                count = len(emails)
-
-                results.append({
-                    "university": target.university,
-                    "emails": ", ".join(sorted(emails))
-                })
-
-                logs.append(f"[{idx}/{total}] DONE  | {target.university} -> {count} email(s)")
-
-                status.markdown(
-                    f"**University:** {target.university}  \n"
-                    f"**Sport:** {target.sport}  \n"
-                    f"**Step:** {idx}/{total}  \n"
-                    f"**Emails found:** {count}"
-                )
-
-            except Exception as ex:
-                results.append({
-                    "university": target.university,
-                    "emails": f"ERROR: {ex}"
-                })
-                logs.append(f"[{idx}/{total}] ERROR | {target.university} -> {ex}")
-
-            live_log.text("\n".join(logs[-20:]))
-            progress_bar.progress(idx / total)
-
-            time.sleep(sleep_s)
-
-        # Build CSV
-        output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
-        writer.writeheader()
-        writer.writerows(results)
-
-        st.success("Completed successfully.")
-
-        st.download_button(
-            label="Download output.csv",
-            data=output.getvalue(),
-            file_name="output.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-
-        with st.expander("Full Log"):
-            st.text("\n".join(logs))
-
-    except Exception as e:
-        st.error(str(e))
-
-st.markdown(
-    "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal Tool • Coach Contact Extractor</div>",
-    unsafe_allow_html=True
-)
 def find_candidate_blocks(soup: BeautifulSoup) -> List:
     rows = soup.select("table tr")
     if len(rows) >= 5:
@@ -226,10 +165,8 @@ def find_candidate_blocks(soup: BeautifulSoup) -> List:
 
     return [soup.body] if soup.body else [soup]
 
-
 def block_text(el) -> str:
     return norm(deobfuscate(el.get_text(" ", strip=True)))
-
 
 def is_excluded_block(text: str) -> bool:
     for k in EXCLUDE_ROLE_KEYWORDS:
@@ -240,12 +177,10 @@ def is_excluded_block(text: str) -> bool:
             return True
     return False
 
-
 def is_target_block(text: str) -> bool:
     if is_excluded_block(text):
         return False
     return any(k in text for k in TARGET_ROLE_KEYWORDS)
-
 
 def emails_in_block(el) -> Set[str]:
     emails: Set[str] = set()
@@ -259,9 +194,6 @@ def emails_in_block(el) -> Set[str]:
     txt = deobfuscate(el.get_text(" ", strip=True))
     emails.update(EMAIL_RE.findall(txt))
     return {e.strip() for e in emails if e.strip()}
-
-
-# ---------- SPORT FILTER (used only for staff_directory_url) ----------
 
 def sport_tokens(sport: str) -> Set[str]:
     s = sport.strip().lower()
@@ -279,17 +211,16 @@ def sport_tokens(sport: str) -> Set[str]:
         if len(w) >= 4:
             tokens.add(w)
 
-    # common sport shorthand (kept minimal and safe)
     if "basketball" in s_clean:
         tokens.add("basketball")
         if "men" in s_clean:
             tokens.add("mbkb")
-            tokens.add("mens basketball")
             tokens.add("m basketball")
+            tokens.add("mens basketball")
         if "women" in s_clean:
             tokens.add("wbkb")
-            tokens.add("womens basketball")
             tokens.add("w basketball")
+            tokens.add("womens basketball")
 
     if "soccer" in s_clean:
         tokens.add("soccer")
@@ -300,21 +231,13 @@ def sport_tokens(sport: str) -> Set[str]:
             tokens.add("wsoc")
             tokens.add("womens soccer")
 
-    # optional but useful for your swim/diving use case
-    if "swimming" in s_clean:
-        tokens.add("swim")
-    if "diving" in s_clean:
-        tokens.add("dive")
-
     return {t for t in tokens if t}
-
 
 def sport_match(text: str, sport: str) -> bool:
     tks = sport_tokens(sport)
     if not tks:
         return True
     return any(tok in text for tok in tks)
-
 
 def collect_bio_links_from_target_blocks(
     soup: BeautifulSoup,
@@ -350,13 +273,7 @@ def collect_bio_links_from_target_blocks(
 
     return sorted(links)
 
-
-def extract_target_emails_from_page(
-    html: str,
-    base_url: str,
-    sport: str,
-    require_sport_match: bool
-) -> Set[str]:
+def extract_target_emails_from_page(html: str, base_url: str, sport: str, require_sport_match: bool) -> Set[str]:
     soup = BeautifulSoup(html, "lxml")
     blocks = find_candidate_blocks(soup)
     out: Set[str] = set()
@@ -370,7 +287,6 @@ def extract_target_emails_from_page(
         out.update(emails_in_block(b))
 
     return out
-
 
 def extract_from_bios(
     session: requests.Session,
@@ -402,28 +318,22 @@ def extract_from_bios(
             emails.update(extract_emails_anywhere(bio_soup))
         except Exception:
             pass
-
         time.sleep(sleep_s)
 
     return emails
 
-
 def join_emails(emails: Set[str]) -> str:
     return ", ".join(sorted(emails, key=lambda x: x.lower()))
-
 
 def process_one_target(session: requests.Session, t: Target, sleep_s: float = 1.2) -> Set[str]:
     emails: Set[str] = set()
 
-    # 1) sport coaches page (no sport-match constraint)
     html = fetch(session, t.url)
     emails.update(extract_target_emails_from_page(html, t.url, t.sport, require_sport_match=False))
 
-    # 2) fallback: bios from sport page
     if not emails:
         emails.update(extract_from_bios(session, t.url, html, t.sport, require_sport_match=False))
 
-    # 3) staff directory general (sport-match ON)
     if not emails and t.staff_directory_url.strip():
         sdu = t.staff_directory_url.strip()
         sd_html = fetch(session, sdu)
@@ -436,13 +346,31 @@ def process_one_target(session: requests.Session, t: Target, sleep_s: float = 1.
     time.sleep(sleep_s)
     return emails
 
+# ============================ UI CONTROLS (CLEAN) ============================
 
+st.markdown("### Input")
+uploaded = st.file_uploader(
+    "Upload a CSV with columns: university, sport, url, staff_directory_url (optional)",
+    type=["csv"]
+)
 
-# ================= RUN + LIVE PROGRESS =================
+with st.expander("Settings", expanded=True):
+    c1, c2 = st.columns(2)
+    with c1:
+        sleep_s = st.number_input("Pause between universities (seconds)", 0.0, 10.0, 1.2, 0.2)
+    with c2:
+        max_rows = st.number_input("Limit rows (0 = no limit)", 0, 50000, 0, 10)
+
+    st.caption("Output is saved with ';' as column delimiter to avoid quoting emails that contain commas.")
+
+run_btn = st.button("Run extraction", type="primary", use_container_width=True, disabled=(uploaded is None))
+
+# ============================ RUN + PROGRESS ============================
 
 if run_btn and uploaded is not None:
     try:
         data = uploaded.getvalue()
+
         text = data.decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(io.StringIO(text))
 
@@ -474,62 +402,23 @@ if run_btn and uploaded is not None:
         progress_bar = st.progress(0.0)
         status = st.empty()
 
-        st.markdown("#### Live log")
-        live_log = st.empty()
-
-        with st.expander("Errors (if any)", expanded=False):
-            error_log = st.empty()
-
-        results: List[dict] = []
-        logs: List[str] = []
-        errors: List[str] = []
+        results = []
+        logs = []
 
         for idx, t in enumerate(targets, start=1):
             status.markdown(
                 f"**University:** {t.university}  \n"
                 f"**Sport:** {t.sport}  \n"
-                f"**Step:** {idx}/{total}  \n"
-                f"**Phase:** fetching & parsing…"
+                f"**Step:** {idx}/{total}"
             )
 
-            logs.append(f"[{idx}/{total}] START  | {t.university} — {t.sport}")
-            live_log.text("\n".join(logs[-25:]))
-
-            try:
-                emails = process_one_target(session, t, sleep_s=float(sleep_s_ui))
-                email_count = len(emails)
-
-                results.append({
-                    "university": t.university,
-                    "emails": join_emails(emails)
-                })
-
-                status.markdown(
-                    f"**University:** {t.university}  \n"
-                    f"**Sport:** {t.sport}  \n"
-                    f"**Step:** {idx}/{total}  \n"
-                    f"**Emails found:** {email_count}"
-                )
-
-                logs.append(f"[{idx}/{total}] DONE   | {t.university} -> {email_count} email(s)")
-                live_log.text("\n".join(logs[-25:]))
-
-            except Exception as ex:
-                results.append({
-                    "university": t.university,
-                    "emails": f"ERROR: {ex}"
-                })
-
-                msg = f"[{idx}/{total}] ERROR  | {t.university} -> {ex}"
-                logs.append(msg)
-                errors.append(msg)
-
-                live_log.text("\n".join(logs[-25:]))
-                error_log.text("\n".join(errors[-80:]))
+            emails = process_one_target(session, t, sleep_s=float(sleep_s))
+            results.append({"university": t.university, "emails": join_emails(emails)})
+            logs.append(f"[{idx}/{total}] {t.university} -> {len(emails)} email(s)")
 
             progress_bar.progress(idx / total)
 
-        # --- Build output CSV (AFTER loop) ---
+        # Build output CSV with ';' delimiter
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
         writer.writeheader()
@@ -541,18 +430,16 @@ if run_btn and uploaded is not None:
             data=output.getvalue(),
             file_name="output.csv",
             mime="text/csv",
-            use_container_width=True
+            use_container_width=True,
         )
 
-        with st.expander("Full log"):
+        with st.expander("Log"):
             st.text("\n".join(logs))
 
     except Exception as e:
         st.error(str(e))
 
-
 st.markdown(
-    "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal Tool • Coach Contact Extractor</div>",
-    unsafe_allow_html=True
+    "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
+    unsafe_allow_html=True,
 )
-
