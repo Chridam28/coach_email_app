@@ -18,17 +18,20 @@ st.set_page_config(
     layout="centered",
 )
 
+st.image("logo.jpg", width=220)
+
 st.markdown(
     """
-    <div style="text-align:center; margin-top: 0.5rem;">
+    <div style="text-align:center;">
       <h1 style="margin-bottom: 0.2rem;">Coach Contact Extractor</h1>
-      <div style="color:#6b7280; font-size: 0.98rem; margin-bottom: 1.0rem;">
-        Extract emails for Head / Assistant Coaches (and recruiting roles when sport-matched) from athletics websites.
+      <div style="color:#6b7280; font-size: 0.95rem; margin-bottom: 1.2rem;">
+        Academic contact extraction tool for collegiate athletics
       </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
 
 # ============================ SCRAPER LOGIC (UNCHANGED) ============================
 
@@ -438,3 +441,4 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
