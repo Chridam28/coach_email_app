@@ -372,6 +372,15 @@ def sport_tokens(sport: str) -> Set[str]:
     for w in words:
         if len(w) >= 4:
             tokens.add(w)
+            
+    if "swim" in s_clean or "swimming" in s_clean:
+        tokens.add("swimming")
+        tokens.add("swim")
+        tokens.add("swimming and diving")
+        tokens.add("swimming & diving")
+        tokens.add("swim and dive")
+        tokens.add("swim & dive")
+        tokens.add("swimdive")
 
     if "basketball" in s_clean:
         tokens.add("basketball")
@@ -651,6 +660,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
