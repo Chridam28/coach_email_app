@@ -10,6 +10,80 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+
+# ===============================
+# SPORT NORMALIZATION BLOCK
+# ===============================
+
+CANONICAL_SPORTS = {
+    ("M", "BASKETBALL"): "Men's Basketball",
+    ("W", "BASKETBALL"): "Women's Basketball",
+    ("M", "TENNIS"): "Men's Tennis",
+    ("W", "TENNIS"): "Women's Tennis",
+    ("M", "SWIMMING_DIVING"): "Men's Swimming & Diving",
+    ("W", "SWIMMING_DIVING"): "Women's Swimming & Diving",
+}
+
+SPORT_ALIASES = {
+    "BASKETBALL": "BASKETBALL",
+    "BBALL": "BASKETBALL",
+    "TENNIS": "TENNIS",
+    "TENN": "TENNIS",
+    "SWIM": "SWIMMING_DIVING",
+    "SWIMMING": "SWIMMING_DIVING",
+    "SWIMMING AND DIVING": "SWIMMING_DIVING",
+    "SWIMMING DIVING": "SWIMMING_DIVING",
+}
+
+GENDERED_ALIASES = {
+    "MBB": ("M", "BASKETBALL"),
+    "WBB": ("W", "BASKETBALL"),
+    "MTEN": ("M", "TENNIS"),
+    "WTEN": ("W", "TENNIS"),
+    "MSWIM": ("M", "SWIMMING_DIVING"),
+    "WSWIM": ("W", "SWIMMING_DIVING"),
+}
+
+def normalize_text(s: str) -> str:
+    if not s:
+        return ""
+    s = s.strip().upper()
+    s = s.replace("&", " AND ")
+    s = re.sub(r"[’'`./\\\-_:]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def detect_gender(norm: str):
+    if "WOMEN" in norm or "W" in norm.split():
+        return "W"
+    if "MEN" in norm or "M" in norm.split():
+        return "M"
+    return None
+
+def resolve_sport(raw: str, default_gender=None):
+    norm = normalize_text(raw)
+
+    if norm in GENDERED_ALIASES:
+        g, cat = GENDERED_ALIASES[norm]
+        return CANONICAL_SPORTS.get((g, cat))
+
+    g = detect_gender(norm) or default_gender
+
+    cleaned = re.sub(r"\bWOMEN(S)?\b", "", norm)
+    cleaned = re.sub(r"\bMEN(S)?\b", "", cleaned).strip()
+
+    cat = SPORT_ALIASES.get(cleaned)
+
+    if not cat or not g:
+        return None
+
+    return CANONICAL_SPORTS.get((g, cat))
+
+# ===============================
+# END SPORT BLOCK
+# ===============================
+
+
 # ============================ PAGE SETUP (CLEAN & ACADEMIC) ============================
 
 st.set_page_config(
@@ -380,13 +454,28 @@ if run_btn and uploaded is not None:
             st.stop()
 
         targets: List[Target] = []
-        for row in reader:
-            u = (row.get("university") or "").strip()
-            s = (row.get("sport") or "").strip()
-            url = (row.get("url") or "").strip()
-            sd = (row.get("staff_directory_url") or "").strip()
-            if u and s and url:
-                targets.append(Target(university=u, sport=s, url=url, staff_directory_url=sd))
+for row in reader:
+    u = (row.get("university") or "").strip()
+    s_raw = (row.get("sport") or "").strip()
+    url = (row.get("url") or "").strip()
+    sd = (row.get("staff_directory_url") or "").strip()
+
+    if u and s_raw and url:
+        # 🔥 Normalizzazione sport
+        s_canon = resolve_sport(s_raw)
+
+        # Se non riconosciuto, usa comunque l'originale (così non rompi nulla)
+        if not s_canon:
+            s_canon = s_raw
+
+        targets.append(
+            Target(
+                university=u,
+                sport=s_canon,
+                url=url,
+                staff_directory_url=sd
+            )
+        )
 
         if max_rows > 0:
             targets = targets[:max_rows]
@@ -443,3 +532,4 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
