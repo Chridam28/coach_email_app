@@ -395,7 +395,30 @@ def sport_tokens(sport: str) -> Set[str]:
 
     return {t for t in tokens if t}
 
+def is_diving_only_for_swim_target(text: str, sport: str) -> bool:
+    """
+    Ritorna True se:
+    - il target sport è "swimming" o "swimming & diving" (men/women ok)
+    - nel blocco compare DIVING ma non compare nessuna forma di SWIM/SWIMMING
+    Quindi è un coach "diving-only" e va escluso.
+    """
+    s = sport.strip().lower()
+
+    # applichiamo la regola solo se il target riguarda swimming (o swim&diving)
+    if "swim" not in s and "swimming" not in s:
+        return False
+
+    # il tuo `text` arriva da block_text() -> norm() -> lowercase
+    has_diving = ("diving" in text) or (" dive " in f" {text} ") or ("diver" in text)
+    has_swim = ("swimming" in text) or (" swim " in f" {text} ") or ("swim&dive" in text) or ("swim and dive" in text)
+
+    return has_diving and not has_swim
+
 def sport_match(text: str, sport: str) -> bool:
+    # 🔥 regola speciale: se target è swimming(/&diving), escludi i blocchi "diving-only"
+    if is_diving_only_for_swim_target(text, sport):
+        return False
+
     tks = sport_tokens(sport)
     if not tks:
         return True
@@ -628,6 +651,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
