@@ -454,76 +454,84 @@ if run_btn and uploaded is not None:
             st.stop()
 
         targets: List[Target] = []
-	for row in reader:
-	    u = (row.get("university") or "").strip()
-	    s_raw = (row.get("sport") or "").strip()
-	    url = (row.get("url") or "").strip()
-	    sd = (row.get("staff_directory_url") or "").strip()
-	
-	    if u and s_raw and url:
-	        # 🔥 Normalizzazione sport
-	        s_canon = resolve_sport(s_raw)
-	
-	        # Se non riconosciuto, usa comunque l'originale (così non rompi nulla)
-	        if not s_canon:
-	            s_canon = s_raw
-	
-	        targets.append(
-	            Target(
-	                university=u,
-	                sport=s_canon,
-	                url=url,
-	                staff_directory_url=sd
-	            )
-	        )
-	
-	        if max_rows > 0:
-	            targets = targets[:max_rows]
-	
-	        total = len(targets)
-	        if total == 0:
-	            st.error("No valid rows found in the CSV.")
-	            st.stop()
-	
-	        session = make_session()
-	
-	        st.markdown("### Progress")
-	        progress_bar = st.progress(0.0)
-	        status = st.empty()
-	
-	        results = []
-	        logs = []
-	
-	        for idx, t in enumerate(targets, start=1):
-	            status.markdown(
-	                f"**University:** {t.university}  \n"
-	                f"**Sport:** {t.sport}  \n"
-	                f"**Step:** {idx}/{total}"
-	            )
-	
-	            emails = process_one_target(session, t, sleep_s=float(sleep_s))
-	            results.append({"university": t.university, "emails": join_emails(emails)})
-	            logs.append(f"[{idx}/{total}] {t.university} -> {len(emails)} email(s)")
-	
-	            progress_bar.progress(idx / total)
-	
-	        # Build output CSV with ';' delimiter
-	        output = io.StringIO()
-	        writer = csv.DictWriter(output, fieldnames=["university", "emails"], delimiter=";")
-	        writer.writeheader()
-	        writer.writerows(results)
-	
-	        st.success("Completed.")
-	        st.download_button(
-	            label="Download output.csv",
-	            data=output.getvalue(),
-	            file_name="output.csv",
-	            mime="text/csv",
-	            use_container_width=True,
-	        )
-	
-	        with st.expander("Log"):
-	            st.text("\n".join(logs))
+
+        for row in reader:
+            u = (row.get("university") or "").strip()
+            s_raw = (row.get("sport") or "").strip()
+            url = (row.get("url") or "").strip()
+            sd = (row.get("staff_directory_url") or "").strip()
+
+            if u and s_raw and url:
+                # 🔥 Normalizzazione sport
+                s_canon = resolve_sport(s_raw)
+
+                # Se non riconosciuto, usa comunque l'originale
+                if not s_canon:
+                    s_canon = s_raw
+
+                targets.append(
+                    Target(
+                        university=u,
+                        sport=s_canon,
+                        url=url,
+                        staff_directory_url=sd
+                    )
+                )
+
+        if max_rows > 0:
+            targets = targets[:max_rows]
+
+        total = len(targets)
+        if total == 0:
+            st.error("No valid rows found in the CSV.")
+            st.stop()
+
+        session = make_session()
+
+        st.markdown("### Progress")
+        progress_bar = st.progress(0.0)
+        status = st.empty()
+
+        results = []
+        logs = []
+
+        for idx, t in enumerate(targets, start=1):
+            status.markdown(
+                f"**University:** {t.university}  \n"
+                f"**Sport:** {t.sport}  \n"
+                f"**Step:** {idx}/{total}"
+            )
+
+            emails = process_one_target(session, t, sleep_s=float(sleep_s))
+            results.append({
+                "university": t.university,
+                "emails": join_emails(emails)
+            })
+            logs.append(f"[{idx}/{total}] {t.university} -> {len(emails)} email(s)")
+
+            progress_bar.progress(idx / total)
+
+        # Build output CSV with ';' delimiter
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=["university", "emails"],
+            delimiter=";"
+        )
+        writer.writeheader()
+        writer.writerows(results)
+
+        st.success("Completed.")
+        st.download_button(
+            label="Download output.csv",
+            data=output.getvalue(),
+            file_name="output.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        with st.expander("Log"):
+            st.text("\n".join(logs))
 
     except Exception as e:
         st.error(str(e))
@@ -532,5 +540,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
+
 
 
