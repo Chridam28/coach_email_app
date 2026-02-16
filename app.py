@@ -176,7 +176,7 @@ def page_likely_matches_target_sport(soup: BeautifulSoup, target_sport: str) -> 
 
 st.set_page_config(
     page_title="Coach Contact Extractor",
-    page_icon="📚",
+    page_icon="logo.jpg",
     layout="centered",
 )
 
@@ -660,6 +660,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
