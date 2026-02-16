@@ -79,6 +79,94 @@ def resolve_sport(raw: str, default_gender=None):
 
     return CANONICAL_SPORTS.get((g, cat))
 
+def sport_keywords_for(canonical_sport: str) -> set[str]:
+    # Tutto in UPPER perché normalizziamo il testo pagina in UPPER
+    kw = {
+        "Men's Basketball": {
+            "MBB", "MEN'S BASKETBALL", "MENS BASKETBALL", "MEN BASKETBALL",
+            "BASKETBALL (M)", "BASKETBALL - MEN", "MEN'S BB", "M BASKETBALL",
+        },
+        "Women's Basketball": {
+            "WBB", "WOMEN'S BASKETBALL", "WOMENS BASKETBALL", "WOMEN BASKETBALL",
+            "BASKETBALL (W)", "BASKETBALL - WOMEN", "WOMEN'S BB", "W BASKETBALL",
+        },
+        "Men's Tennis": {
+            "MTEN", "MEN'S TENNIS", "MENS TENNIS", "MEN TENNIS",
+            "TENNIS (M)", "TENNIS - MEN", "M TENNIS",
+        },
+        "Women's Tennis": {
+            "WTEN", "WOMEN'S TENNIS", "WOMENS TENNIS", "WOMEN TENNIS",
+            "TENNIS (W)", "TENNIS - WOMEN", "W TENNIS",
+        },
+        "Men's Swimming & Diving": {
+            "MSWIM", "MEN'S SWIMMING", "MENS SWIMMING", "MEN SWIMMING",
+            "MEN'S SWIMMING AND DIVING", "MEN'S SWIMMING & DIVING",
+            "SWIMMING AND DIVING (M)", "SWIM", "SWIMMING", "SWIM & DIVE",
+            "SWIMMING & DIVING", "S&D", "S AND D",
+        },
+        "Women's Swimming & Diving": {
+            "WSWIM", "WOMEN'S SWIMMING", "WOMENS SWIMMING", "WOMEN SWIMMING",
+            "WOMEN'S SWIMMING AND DIVING", "WOMEN'S SWIMMING & DIVING",
+            "SWIMMING AND DIVING (W)", "SWIM", "SWIMMING", "SWIM & DIVE",
+            "SWIMMING & DIVING", "S&D", "S AND D",
+        },
+    }.get(canonical_sport, set())
+
+    # Fallback: se non riconosciuto, prova a usare solo il canonico normalizzato
+    if not kw:
+        kw = {normalize_text(canonical_sport)}
+    return kw
+
+
+def page_sport_confidence(soup: BeautifulSoup, canonical_sport: str) -> tuple[int, list[str]]:
+    """
+    Ritorna (score, matches). Score = quante keyword trovate.
+    Usiamo solo segnali "forti" (title, headings, nav/breadcrumb) per evitare falsi positivi.
+    """
+    # testo "forte"
+    parts = []
+
+    if soup.title and soup.title.string:
+        parts.append(soup.title.string)
+
+    # Headings
+    for h in soup.select("h1, h2, h3"):
+        txt = h.get_text(" ", strip=True)
+        if txt:
+            parts.append(txt)
+
+    # breadcrumb / nav spesso contiene lo sport
+    for el in soup.select("nav, .breadcrumb, .breadcrumbs, .site-nav, header"):
+        txt = el.get_text(" ", strip=True)
+        if txt:
+            parts.append(txt)
+
+    strong_text = normalize_text(" ".join(parts))
+    # normalize_text mette AND ecc.; qui vogliamo UPPER (la tua normalize_text già fa UPPER)
+    kw = sport_keywords_for(canonical_sport)
+
+    matches = [k for k in kw if k in strong_text]
+    score = len(matches)
+
+    # Bonus score se la keyword include esplicitamente MEN/WOMEN e compare
+    # (riduce ambiguità tennis/swimming)
+    if "MEN" in strong_text and canonical_sport.startswith("Men"):
+        score += 1
+    if "WOMEN" in strong_text and canonical_sport.startswith("Women"):
+        score += 1
+
+    return score, matches
+
+
+def page_likely_matches_target_sport(soup: BeautifulSoup, target_sport: str) -> bool:
+    """
+    Decide se la pagina è coerente con lo sport target.
+    Regola: almeno 1 match "forte" + coerenza genere (se presente) con un piccolo bonus.
+    """
+    score, _ = page_sport_confidence(soup, target_sport)
+    return score >= 1
+
+
 # ===============================
 # END SPORT BLOCK
 # ===============================
@@ -540,6 +628,7 @@ st.markdown(
     "<hr><div style='text-align:center; color:#6b7280; font-size:0.85rem;'>Internal tool • Coach Contact Extractor</div>",
     unsafe_allow_html=True,
 )
+
 
 
 
